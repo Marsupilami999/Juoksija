@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Juoksuohjelma – Pilvisynkronoitu</title>
+  
+  <!-- Chart.js kaavioita varten -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-color: #0f172a;
+      --accent-color: #2563eb;
+      --border-color: #e2e8f0;
+      --muted-bg: #f1f5f9;
+      --success-color: #10b981;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container { max-width: 800px; margin: 0 auto; }
+    
+    #auth-screen {
+      max-width: 400px;
+      margin: 60px auto;
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 0.9rem; margin-bottom: 4px; font-weight: 600; }
+    .form-group input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; }
+    
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: var(--accent-color);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    header { text-align: center; margin-bottom: 24px; }
+    
+    .week-selector-bar {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .week-selector-bar select {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .day-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .day-card.rest { background-color: var(--muted-bg); opacity: 0.9; }
+    .day-header { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 6px; }
+    .badge { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem; }
+    .badge-rest { background: #e2e8f0; color: #475569; }
+    .hr-zone { font-size: 0.85rem; color: #0284c7; font-weight: 600; margin-top: 4px; }
+    
+    .day-inputs {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border-color);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .input-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .input-box input[type="number"] {
+      width: 50px;
+      padding: 6px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .input-box input[type="number"]:disabled {
+      background-color: #f1f5f9;
+      color: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    .save-btn {
+      width: auto;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      background-color: var(--accent-color);
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .save-btn.saved { background-color: var(--success-color); }
+    .save-btn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
+    
+    .chart-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 28px;
+    }
+
+    .chart-container { margin-top: 16px; position: relative; height: 320px; }
+    .hidden { display: none; }
+    .user-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 0.85rem; color: #64748b; }
+    .logout-btn { width: auto; padding: 4px 12px; background-color: #ef4444; font-size: 0.8rem; }
+    .summary-badge { font-weight: bold; color: var(--accent-color); font-size: 1rem; }
+  </style>
+
+  <!-- Firebase Modular SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, setPersistence, browserLocalPersistence, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAg5QaGwH1rC2njvmGvYfMlMRgii-diOnc",
+      authDomain: "juoksija-e46a0.firebaseapp.com",
+      databaseURL: "https://juoksija-e46a0-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "juoksija-e46a0",
+      storageBucket: "juoksija-e46a0.firebasestorage.app",
+      messagingSenderId: "702480994362",
+      appId: "1:702480994362:web:c20ce2ea5c30d04654a503",
+      measurementId: "G-Q8VNCHEH8Q"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    setPersistence(auth, browserLocalPersistence);
+
+    const loginForm = document.getElementById('login-form');
+    const authScreen = document.getElementById('auth-screen');
+    const appScreen = document.getElementById('app-screen');
+    const userEmailSpan = document.getElementById('user-email');
+    const logoutBtn = document.getElementById('logout-btn');
+    const errorMsg = document.getElementById('error-msg');
+    const weekSelect = document.getElementById('week-select');
+
+    let runningChart = null;
+    let currentUserCode = '';
+    const days = ['ma', 'ti', 'ke', 'to', 'pe', 'la', 'su'];
+
+    const START_WEEK = 39;
+    const TOTAL_WEEKS = 16;
+    const weeksList = Array.from({ length: TOTAL_WEEKS }, (_, i) => START_WEEK + i);
+
+    const weeklyTotals = { P: {}, M: {} };
+    weeksList.forEach(w => { weeklyTotals.P[w] = 0; weeklyTotals.M[w] = 0; });
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim().toLowerCase();
+      const password = document.getElementById('password').value;
+      const fakeEmail = username.includes('@') ? username : `${username}@juoksu.local`;
+
+      try {
+        await signInWithEmailAndPassword(auth, fakeEmail, password);
+        errorMsg.innerText = '';
+      } catch (err) {
+        console.error(err);
+        errorMsg.innerText = 'Kirjautuminen epäonnistui. Tarkista tunnukset.';
+      }
+    });
+
+    logoutBtn.addEventListener('click', () => signOut(auth));
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        authScreen.classList.add('hidden');
+        appScreen.classList.remove('hidden');
+        
+        currentUserCode = user.email ? user.email.split('@')[0].toUpperCase() : '';
+        userEmailSpan.innerText = currentUserCode;
+        
+        initChart();
+        setupWeekSelector();
+        initGlobalDataListeners();
+      } else {
+        authScreen.classList.remove('hidden');
+        appScreen.classList.add('hidden');
+      }
+    });
+
+    function setupWeekSelector() {
+      weekSelect.innerHTML = '';
+      weeksList.forEach(w => {
+        const opt = document.createElement('option');
+        opt.value = w;
+        opt.innerText = `Viikko ${w}`;
+        weekSelect.appendChild(opt);
+      });
+      weekSelect.addEventListener('change', () => {
+        updateActiveWeekDisplay();
+      });
+    }
+
+    function initChart() {
+      const ctx = document.getElementById('kmChart').getContext('2d');
+      if (runningChart) runningChart.destroy();
+
+      runningChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: weeksList.map(w => `Vk ${w}`),
+          datasets: [
+            {
+              label: 'Juoksija P (km)',
+              data: weeksList.map(w => weeklyTotals.P[w]),
+              borderColor: '#2563eb',
+              backgroundColor: 'rgba(37, 99, 235, 0.1)',
+              tension: 0.3,
+              fill: true
+            },
+            {
+              label: 'Juoksija M (km)',
+              data: weeksList.map(w => weeklyTotals.M[w]),
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              tension: 0.3,
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Viikkokilometrit (km)' } }
+          }
+        }
+      });
+    }
+
+    // Kuunnellaan kaikkia viikkoja reaaliajassa tietokannasta
+    function initGlobalDataListeners() {
+      ['P', 'M'].forEach(runner => {
+        weeksList.forEach(w => {
+          const docRef = doc(db, "running_logs_daily", `${runner}_wk_${w}`);
+          onSnapshot(docRef, (docSnap) => {
+            let sum = 0;
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              days.forEach(d => { 
+                sum += Number(data[d]) || 0; 
+                
+                // Jos kuunneltava viikko on valittuna, päivitetään syötekentät
+                if (Number(weekSelect.value) === w) {
+                  const inputEl = document.getElementById(`input_${runner}_${d}`);
+                  if (inputEl && document.activeElement !== inputEl) {
+                    inputEl.value = data[d] !== undefined && data[d] !== 0 ? data[d] : '';
+                  }
+                }
+              });
+            } else {
+              if (Number(weekSelect.value) === w) {
+                days.forEach(d => {
+                  const inputEl = document.getElementById(`input_${runner}_${d}`);
+                  if (inputEl && document.activeElement !== inputEl) inputEl.value = '';
+                });
+              }
+            }
+
+            weeklyTotals[runner][w] = sum;
+
+            // Päivitetään yhteenvedot ja graafi välittömästi
+            const activeWeek = Number(weekSelect.value);
+            if (activeWeek === w) {
+              const summaryEl = document.getElementById(`summary-${runner}`);
+              if (summaryEl) summaryEl.innerText = `${sum} km`;
+            }
+
+            if (runningChart) {
+              const datasetIndex = runner === 'P' ? 0 : 1;
+              runningChart.data.datasets[datasetIndex].data = weeksList.map(wk => weeklyTotals[runner][wk]);
+              runningChart.update(); // Päivittää graafin animaatiolla
+            }
+          });
+        });
+      });
+
+      setupSaveButtons();
+    }
+
+    function updateActiveWeekDisplay() {
+      const activeWeek = Number(weekSelect.value);
+      ['P', 'M'].forEach(runner => {
+        const summaryEl = document.getElementById(`summary-${runner}`);
+        if (summaryEl) summaryEl.innerText = `${weeklyTotals[runner][activeWeek] || 0} km`;
+
+        days.forEach(day => {
+          const inputEl = document.getElementById(`input_${runner}_${day}`);
+          const isEditable = (runner === currentUserCode);
+          if (inputEl) inputEl.disabled = !isEditable;
+        });
+      });
+    }
+
+    function setupSaveButtons() {
+      ['P', 'M'].forEach(runner => {
+        const isEditable = (runner === currentUserCode);
+
+        days.forEach(day => {
+          const btnEl = document.getElementById(`btn_${runner}_${day}`);
+          const inputEl = document.getElementById(`input_${runner}_${day}`);
+
+          if (btnEl) {
+            btnEl.disabled = !isEditable;
+            btnEl.onclick = async () => {
+              if (!isEditable) return;
+              
+              const activeWeek = Number(weekSelect.value);
+              const value = Number(inputEl.value) || 0;
+              const docRef = doc(db, "running_logs_daily", `${runner}_wk_${activeWeek}`);
+              
+              try {
+                const updateData = {};
+                updateData[day] = value;
+                updateData.updatedBy = auth.currentUser ? auth.currentUser.email : 'tuntematon';
+
+                await setDoc(docRef, updateData, { merge: true });
+                
+                btnEl.classList.add('saved');
+                btnEl.innerText = 'OK!';
+                setTimeout(() => {
+                  btnEl.classList.remove('saved');
+                  btnEl.innerText = '💾 Tallenna';
+                }, 1500);
+              } catch (err) {
+                console.error("Tallennusvirhe:", err);
+                alert(`Tallennus epäonnistui!\nVirhe: ${err.message}`);
+              }
+            };
+          }
+        });
+      });
+    }
+  </script>
+</head>
+<body>
+
+  <div id="auth-screen">
+    <h2>🔒 Kirjaudu sisään</h2>
+    <form id="login-form">
+      <div class="form-group">
+        <label>Käyttäjätunnus</label>
+        <input type="text" id="username" placeholder="esim. p tai m" required>
+      </div>
+      <div class="form-group">
+        <label>Salasana</label>
+        <input type="password" id="password" required>
+      </div>
+      <div id="error-msg" style="color: red; font-size: 0.85rem; margin-bottom: 10px;"></div>
+      <button type="submit">Kirjaudu</button>
+    </form>
+  </div>
+
+  <div id="app-screen" class="container hidden">
+    <div class="user-bar">
+      <span>Kirjautuneena: <strong id="user-email"></strong></span>
+      <button id="logout-btn" class="logout-btn">Kirjaudu ulos</button>
+    </div>
+
+    <header>
+      <h1>🏃‍♂️🏃‍♀️ JUOKSUPÄIVÄKIRJA</h1>
+      <div>Harjoittelun ja kilometrien seuranta</div>
+    </header>
+
+    <div class="week-selector-bar">
+      <div>
+        <label for="week-select" style="font-weight: 600;">Valitse viikko: </label>
+        <select id="week-select"></select>
+      </div>
+      <div>
+        <span>P: <strong id="summary-P" class="summary-badge">0 km</strong></span>
+        <span style="margin-left: 12px;">M: <strong id="summary-M" class="summary-badge">0 km</strong></span>
+      </div>
+    </div>
+
+    <!-- MAANANTAI -->
+    <div class="day-card">
+      <div class="day-header"><span>MAANANTAI – Kevyt PK1</span><span class="badge">40–50 min</span></div>
+      <div>Erittäin helppo ja rento hölkkä tasaisella maastolla.</div>
+      <div class="hr-zone">Syke: 120–130 bpm</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_ma">P:</label>
+          <input type="number" id="input_P_ma" min="0" max="99" placeholder="0">
+          <button id="btn_P_ma" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_ma">M:</label>
+          <input type="number" id="input_M_ma" min="0" max="99" placeholder="0">
+          <button id="btn_M_ma" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIISTAI -->
+    <div class="day-card rest">
+      <div class="day-header"><span>TIISTAI – LEPO</span><span class="badge badge-rest">Lepo</span></div>
+      <div>Lepo juoksusta / muu urheilu.</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_ti">P:</label>
+          <input type="number" id="input_P_ti" min="0" max="99" placeholder="0">
+          <button id="btn_P_ti" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_ti">M:</label>
+          <input type="number" id="input_M_ti" min="0" max="99" placeholder="0">
+          <button id="btn_M_ti" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- KESKIVIIKKO -->
+    <div class="day-card">
+      <div class="day-header"><span>KESKIVIIKKO – VK (A tai B)</span><span class="badge">40–50 min</span></div>
+      <div><strong>A) Tempo:</strong> 20–25 min reipasta | <strong>B) Fartlek:</strong> 5 x (3 min / 2 min)</div>
+      <div class="hr-zone">Syke: 150–160 bpm</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_ke">P:</label>
+          <input type="number" id="input_P_ke" min="0" max="99" placeholder="0">
+          <button id="btn_P_ke" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_ke">M:</label>
+          <input type="number" id="input_M_ke" min="0" max="99" placeholder="0">
+          <button id="btn_M_ke" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TORSTAI -->
+    <div class="day-card rest">
+      <div class="day-header"><span>TORSTAI – LEPO</span><span class="badge badge-rest">Lepo</span></div>
+      <div>Lepo.</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_to">P:</label>
+          <input type="number" id="input_P_to" min="0" max="99" placeholder="0">
+          <button id="btn_P_to" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_to">M:</label>
+          <input type="number" id="input_M_to" min="0" max="99" placeholder="0">
+          <button id="btn_M_to" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PERJANTAI -->
+    <div class="day-card">
+      <div class="day-header"><span>PERJANTAI – Kevyt / Polku PK</span><span class="badge">40–50 min</span></div>
+      <div>Kevyt lenkki pururadalla tai polulla.</div>
+      <div class="hr-zone">Syke: 125–135 bpm</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_pe">P:</label>
+          <input type="number" id="input_P_pe" min="0" max="99" placeholder="0">
+          <button id="btn_P_pe" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_pe">M:</label>
+          <input type="number" id="input_M_pe" min="0" max="99" placeholder="0">
+          <button id="btn_M_pe" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAUANTAI -->
+    <div class="day-card rest">
+      <div class="day-header"><span>LAUANTAI – LEPO</span><span class="badge badge-rest">Lepo</span></div>
+      <div>Lepo.</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_la">P:</label>
+          <input type="number" id="input_P_la" min="0" max="99" placeholder="0">
+          <button id="btn_P_la" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_la">M:</label>
+          <input type="number" id="input_M_la" min="0" max="99" placeholder="0">
+          <button id="btn_M_la" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUNNUNTAI -->
+    <div class="day-card">
+      <div class="day-header"><span>SUNNUNTAI – Pitkä Lenkki (PK)</span><span class="badge">Päätreeni</span></div>
+      <div>Viikon tärkein kestävyystreeni. Rauhallinen vauhti, mäet kävellen.</div>
+      <div class="hr-zone">Syke: &lt;130 bpm</div>
+      <div class="day-inputs">
+        <span style="font-size: 0.85rem; color: #64748b;">Toteutuneet km:</span>
+        <div class="input-box">
+          <label for="input_P_su">P:</label>
+          <input type="number" id="input_P_su" min="0" max="99" placeholder="0">
+          <button id="btn_P_su" class="save-btn">💾 Tallenna</button>
+        </div>
+        <div class="input-box">
+          <label for="input_M_su">M:</label>
+          <input type="number" id="input_M_su" min="0" max="99" placeholder="0">
+          <button id="btn_M_su" class="save-btn">💾 Tallenna</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <h3>📊 Viikkokilometrien kehitys (Vk 39 alkaen)</h3>
+      <div class="chart-container">
+        <canvas id="kmChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
