@@ -185,6 +185,14 @@
     const weeklyTotals = { P: {}, M: {} };
     weeksList.forEach(w => { weeklyTotals.P[w] = 0; weeklyTotals.M[w] = 0; });
 
+    // Funktio kuluvan kalenteriviikon laskemiseen
+    function getCurrentWeekNumber() {
+      const now = new Date();
+      const firstDayOfYear = new Date(now.getFullYear(), 0, 1);
+      const pastDaysOfYear = (now - firstDayOfYear) / 86400000;
+      return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+    }
+
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('username').value.trim().toLowerCase();
@@ -221,12 +229,19 @@
 
     function setupWeekSelector() {
       weekSelect.innerHTML = '';
+      
+      const currentCalWeek = getCurrentWeekNumber();
+      // Jos nykyinen kalenteriviikko kuuluu ohjelmaan, valitaan se, muuten oletuksena aloitusviikko
+      const defaultWeek = weeksList.includes(currentCalWeek) ? currentCalWeek : START_WEEK;
+
       weeksList.forEach(w => {
         const opt = document.createElement('option');
         opt.value = w;
-        opt.innerText = `Viikko ${w}`;
+        opt.innerText = (w === currentCalWeek) ? `Viikko ${w} (Kuluva viikko)` : `Viikko ${w}`;
+        if (w === defaultWeek) opt.selected = true;
         weekSelect.appendChild(opt);
       });
+
       weekSelect.addEventListener('change', () => {
         updateActiveWeekDisplay();
       });
@@ -269,7 +284,6 @@
       });
     }
 
-    // Kuunnellaan kaikkia viikkoja reaaliajassa tietokannasta
     function initGlobalDataListeners() {
       ['P', 'M'].forEach(runner => {
         weeksList.forEach(w => {
@@ -281,7 +295,6 @@
               days.forEach(d => { 
                 sum += Number(data[d]) || 0; 
                 
-                // Jos kuunneltava viikko on valittuna, päivitetään syötekentät
                 if (Number(weekSelect.value) === w) {
                   const inputEl = document.getElementById(`input_${runner}_${d}`);
                   if (inputEl && document.activeElement !== inputEl) {
@@ -300,7 +313,6 @@
 
             weeklyTotals[runner][w] = sum;
 
-            // Päivitetään yhteenvedot ja graafi välittömästi
             const activeWeek = Number(weekSelect.value);
             if (activeWeek === w) {
               const summaryEl = document.getElementById(`summary-${runner}`);
@@ -310,7 +322,7 @@
             if (runningChart) {
               const datasetIndex = runner === 'P' ? 0 : 1;
               runningChart.data.datasets[datasetIndex].data = weeksList.map(wk => weeklyTotals[runner][wk]);
-              runningChart.update(); // Päivittää graafin animaatiolla
+              runningChart.update();
             }
           });
         });
