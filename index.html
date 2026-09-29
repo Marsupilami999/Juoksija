@@ -219,9 +219,8 @@
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, inMemoryPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
   import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // 🔴 Varmista että tässä on omat Firebase-tietosi 🔴
   const firebaseConfig = {
-    apiKey: "AIzaSyAg5QaGwH1rC2njvmGvYfMLMRgii-diOnc",
+    apiKey: "AIzaSyAg5QaGwH1rC2njvmGvYfMlMRgii-diOnc",
     authDomain: "juoksija-e46a0.firebaseapp.com",
     databaseURL: "https://juoksija-e46a0-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "juoksija-e46a0",
@@ -235,7 +234,6 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // Asetetaan kirjautumisen pysyvyys
   setPersistence(auth, inMemoryPersistence);
 
   const loginForm = document.getElementById('login-form');
@@ -259,6 +257,7 @@
       await signInWithEmailAndPassword(auth, email, password);
       errorMsg.innerText = '';
     } catch (err) {
+      console.error(err);
       errorMsg.innerText = 'Kirjautuminen epäonnistui. Tarkista tunnus ja salasana.';
     }
   });
@@ -318,7 +317,6 @@
           dayName.innerText = day.toUpperCase();
           dayBox.appendChild(dayName);
 
-          // Syötekentät
           const inputKm = document.createElement('input');
           inputKm.type = 'number';
           inputKm.step = '0.1';
@@ -338,7 +336,6 @@
           inputPace.disabled = !isOwner;
           inputPace.id = `${runner}_wk${week}_${day}_pace`;
 
-          // Tapahtumankuuntelijat tallennukselle (vain omistajalle)
           if (isOwner) {
             const saveData = () => {
               const docRef = doc(db, "running_logs", `${runner}_wk_${week}`);
@@ -349,7 +346,7 @@
                 pace: inputPace.value || null,
                 updatedAt: new Date().toISOString()
               };
-              setDoc(docRef, dataObj, { merge: true });
+              setDoc(docRef, dataObj, { merge: true }).catch(err => console.error("Tallennusvirhe:", err));
             };
 
             inputKm.addEventListener('change', saveData);
@@ -366,7 +363,6 @@
         runnerSection.appendChild(daysGrid);
         weekCard.appendChild(runnerSection);
 
-        // Reaaliaikainen kuuntelu Firestoresta
         const docRef = doc(db, "running_logs", `${runner}_wk_${week}`);
         onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -376,9 +372,8 @@
               const hrInput = document.getElementById(`${runner}_wk${week}_${day}_hr`);
               const paceInput = document.getElementById(`${runner}_wk${week}_${day}_pace`);
 
-              if (data[day]) {
-                // Varmistetaan tuki myös vanhalle pelkälle km-numeromuodolle
-                if (typeof data[day] === 'object') {
+              if (data && data[day] !== undefined) {
+                if (typeof data[day] === 'object' && data[day] !== null) {
                   if (kmInput) kmInput.value = data[day].km || '';
                   if (hrInput) hrInput.value = data[day].hr || '';
                   if (paceInput) paceInput.value = data[day].pace || '';
